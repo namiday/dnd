@@ -4,12 +4,19 @@ import {
   TabList,
   TabPanel
 } from "react-tabs";
-import "react-tabs/style/react-tabs.css"; // styles de base, à personnaliser si besoin
-import ObjetVehiculeForm from "./ObjetVehiculeForm";
+import "react-tabs/style/react-tabs.css";
+import ObjetVehiculeForm from "./../ObjetVehiculeForm";
+import GeneralInfoTab from "./GeneralInfoTab";
+import SkillsTab from "./Skills/SkillTabs";
+import ObjectsTab from "./Objects/ObjectsTab";
+import PnjsTab from "./PnjFamiliers/PnjsTab";
+import ContactsTab from "./Contacts/ContactsTab";
+
+
 
 export default function CharacterTabs() {
   return (
-    <div className="w-full max-w-3xl mx-auto">
+    <div className="w-full max-w-4xl mx-auto">
       <Tabs>
         <TabList>
           <Tab>Info. Générales</Tab>
@@ -19,20 +26,20 @@ export default function CharacterTabs() {
           <Tab>Contacts</Tab>
         </TabList>
 
-        <TabPanel>
-          <div>À venir : Info. Générales</div>
+        <TabPanel forceRender>
+          <GeneralInfoTab />
         </TabPanel>
-        <TabPanel>
-          <div>À venir : Compétences</div>
+        <TabPanel forceRender>
+          <SkillsTab />
         </TabPanel>
-        <TabPanel>
-          <ObjetVehiculeForm/>
+        <TabPanel forceRender>
+          <ObjectsTab />
         </TabPanel>
-        <TabPanel>
-          <div>À venir : Familiers</div>
+        <TabPanel forceRender>
+          <PnjsTab />
         </TabPanel>
-        <TabPanel>
-          <div>À venir : Contacts</div>
+        <TabPanel forceRender>
+          <ContactsTab />
         </TabPanel>
       </Tabs>
     </div>

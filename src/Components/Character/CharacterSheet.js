@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import ActionButton from './Action/ActionButton';
 
 function CharacterSheet({ level }) {
   const [pv, setPv] = useState(19);
@@ -114,84 +115,116 @@ function CharacterSheet({ level }) {
     );
   };
 
+  // ✅ Compétences & objets depuis localStorage
+  const skills = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("character_skills")) || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const objects = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("character_objects")) || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gridTemplateRows: '1fr 1fr',
-        border: '1px solid #000',
-        width: '500px',
-        height: 'auto',
-      }}
-    >
-      {/* Haut gauche */}
+    <>
       <div
         style={{
-          borderRight: '1px solid #000',
-          borderBottom: '1px solid #000',
-          padding: '10px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gridTemplateRows: '1fr 1fr',
+          border: '1px solid #000',
+          width: '500px',
+          height: 'auto',
         }}
       >
-        <p>
-          <strong>Indice de recherche :</strong> criminel
-        </p>
-      </div>
-
-      {/* Haut droit */}
-      <div
-        style={{
-          borderBottom: '1px solid #000',
-          padding: '10px',
-        }}
-      >
-        <p>
-          <strong>Poids porté :</strong> 70/80
-        </p>
-      </div>
-
-      {/* Bas gauche : Stats en grille */}
-      <div
-        style={{
-          borderRight: '1px solid #000',
-          padding: '10px',
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-        }}
-      >
-        <h2> Vous êtes niveau : {level}</h2>
-        <p>Total caractéristiques : {totalCaracteristiques} / {maxCaracteristiques}</p>
-        {Object.entries(stats).map(([label, value]) => (
-          <StatBlock
-            key={label}
-            label={label}
-            value={value}
-            onIncrement={() => updateStat(label, 1)}
-            onDecrement={() => updateStat(label, -1)}
-          />
-        ))}
-      </div>
-
-      {/* Bas droit : PV et PE */}
-      <div style={{ padding: '10px' }}>
-        <div style={{ marginBottom: '10px' }}>
+        {/* Haut gauche */}
+        <div
+          style={{
+            borderRight: '1px solid #000',
+            borderBottom: '1px solid #000',
+            padding: '10px',
+          }}
+        >
           <p>
-            PV : {pv}/{maxPv}
+            <strong>Indice de recherche :</strong> criminel
           </p>
-          <button onClick={() => setPv((prev) => Math.max(prev - 1, 0))}>- PV</button>
-          <button onClick={() => setPv((prev) => Math.min(prev + 1, maxPv))}>+ PV</button>
         </div>
 
-        <div>
+        {/* Haut droit */}
+        <div
+          style={{
+            borderBottom: '1px solid #000',
+            padding: '10px',
+          }}
+        >
           <p>
-            PE : {pe}/{maxPe}
+            <strong>Poids porté :</strong> 70/80
           </p>
-          <button onClick={() => setPe((prev) => Math.max(prev - 1, 0))}>- PE</button>
-          <button onClick={() => setPe((prev) => Math.min(prev + 1, maxPe))}>+ PE</button>
+        </div>
+
+        {/* Bas gauche : Stats */}
+        <div
+          style={{
+            borderRight: '1px solid #000',
+            padding: '10px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+          }}
+        >
+          <h2>Vous êtes niveau : {level}</h2>
+          <p>Total caractéristiques : {totalCaracteristiques} / {maxCaracteristiques}</p>
+          {Object.entries(stats).map(([label, value]) => (
+            <StatBlock
+              key={label}
+              label={label}
+              value={value}
+              onIncrement={() => updateStat(label, 1)}
+              onDecrement={() => updateStat(label, -1)}
+            />
+          ))}
+        </div>
+
+        {/* Bas droit : PV/PE */}
+        <div style={{ padding: '10px' }}>
+          <div style={{ marginBottom: '10px' }}>
+            <p>
+              PV : {pv}/{maxPv}
+            </p>
+            <button onClick={() => setPv((prev) => Math.max(prev - 1, 0))}>- PV</button>
+            <button onClick={() => setPv((prev) => Math.min(prev + 1, maxPv))}>+ PV</button>
+          </div>
+
+          <div>
+            <p>
+              PE : {pe}/{maxPe}
+            </p>
+            <button onClick={() => setPe((prev) => Math.max(prev - 1, 0))}>- PE</button>
+            <button onClick={() => setPe((prev) => Math.min(prev + 1, maxPe))}>+ PE</button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Bouton ACTION */}
+      <div style={{ marginTop: '20px' }}>
+        <ActionButton
+          characteristics={{
+            attaque: stats.ATT,
+            defense: stats.CON,
+            volonte: stats.SAG,
+          }}
+          skills={skills}
+          objects={objects}
+        />
+      </div>
+    </>
   );
 }
 

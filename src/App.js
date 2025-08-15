@@ -2,8 +2,8 @@
 import React, { useState } from 'react';
 import './App.css';
 import XpProgressCircle from './Components/XpProgressCircle';
-import CharacterSheet from './Components/CharacterSheet';
-import CharacterTabs from './Components/CharacterTabs';
+import CharacterSheet from './Components/Character/CharacterSheet';
+import CharacterTabs from './Components/Character/CharacterTabs';
 
 function App() {
   // Déclaration de la variable level dans le composant parent

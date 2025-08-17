@@ -7,61 +7,44 @@ const LOCAL_STORAGE_KEY = "character_skills";
 
 const SkillsTab = () => {
   const [skills, setSkills] = useState([]);
-  const isFirstRender = useRef(true);
+  const hasLoaded = useRef(false); // ← évite la 1re sauvegarde vide
 
-  // Chargement depuis localStorage au premier render
+  // Chargement depuis localStorage au premier rendu
   useEffect(() => {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const storedSkills = localStorage.getItem(LOCAL_STORAGE_KEY);
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
+      if (storedSkills) {
+        const parsed = JSON.parse(storedSkills);
         console.log("📥 Chargement initial depuis localStorage :", parsed);
         setSkills(parsed);
-      } else {
-        console.log("📥 Aucun tableau valide trouvé dans localStorage.");
       }
     } catch (e) {
-      console.error("❌ Erreur parsing JSON localStorage :", e);
+      console.error("Erreur de parsing localStorage :", e);
+    } finally {
+      hasLoaded.current = true;
     }
-
-    isFirstRender.current = false;
   }, []);
 
-  // Sauvegarde uniquement après le premier render
+  // Sauvegarde automatique à chaque modification
   useEffect(() => {
-    if (!isFirstRender.current) {
-      console.log("💾 Sauvegarde skills :", skills);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(skills));
-    }
+    if (!hasLoaded.current) return;
+    console.log("💾 Sauvegarde skills :", skills);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(skills));
   }, [skills]);
 
   const handleSkillChange = (index, updatedSkill) => {
-    const updated = [...skills];
-    updated[index] = updatedSkill;
-    setSkills(updated);
+    const newSkills = [...skills];
+    newSkills[index] = updatedSkill;
+    setSkills(newSkills);
   };
 
   const handleAddSkill = () => {
-    setSkills([
-      ...skills,
-      {
-        nom: "",
-        info: "",
-        carac1: "",
-        carac2: "",
-        part1: "",
-        part1_uses: 0,
-        part1_bonus: 0,
-        part2: "",
-        part2_uses: 0,
-        part2_bonus: 0,
-      },
-    ]);
+    setSkills([...skills, {}]);
   };
 
   const handleRemoveSkill = (index) => {
-    const updated = skills.filter((_, i) => i !== index);
-    setSkills(updated);
+    const newSkills = skills.filter((_, i) => i !== index);
+    setSkills(newSkills);
   };
 
   return (

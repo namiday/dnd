@@ -1,209 +1,214 @@
-import React, { useEffect, useMemo } from "react";
-import ActionButton from "./Action/ActionButton";
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ActionButton from './Action/ActionButton';
 
-/* =========================================================
- * Robust LocalStorage helpers + hook
- * - Lit LS dans l'initialiseur de useState (pas d'effet)
- * - Évite d'écrire au premier render (skip 1er passage)
- * - Gère proprement nombres/objets et erreurs JSON
- * =======================================================*/
-function readFromLS(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      // Si ce n'est pas du JSON valide, tente une coercition simple
-      parsed = raw;
-    }
-
-    if (typeof fallback === "number") {
-      const n = Number(parsed);
-      return Number.isFinite(n) ? n : fallback;
-    }
-    if (typeof fallback === "object" && fallback !== null) {
-      // On attend un objet : si parsed n'en est pas un, on renvoie le fallback
-      return parsed && typeof parsed === "object" ? parsed : fallback;
-    }
-    return parsed ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function useLocalStorage(key, initialValue) {
-  const [value, setValue] = React.useState(() => readFromLS(key, initialValue));
-  const first = React.useRef(true);
-
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // ignore write errors
-    }
-  }, [key, value]);
-
-  return [value, setValue];
-}
-
-/* =========================================================
- * Utils
- * =======================================================*/
-const DEFAULT_STATS = { ATT: 0, DEX: 0, CON: 0, INT: 0, SAG: 0, CHA: 0 };
-
-function normalizeStats(obj) {
-  const src = obj || {};
-  return {
-    ATT: Number(src.ATT ?? 0),
-    DEX: Number(src.DEX ?? 0),
-    CON: Number(src.CON ?? 0),
-    INT: Number(src.INT ?? 0),
-    SAG: Number(src.SAG ?? 0),
-    CHA: Number(src.CHA ?? 0),
-  };
-}
-
-const levelCap = {
-  1: 12,  2: 14,  3: 15,  4: 17,  5: 20,
-  6: 22,  7: 23,  8: 25,  9: 27, 10: 31,
- 11: 33, 12: 35, 13: 36, 14: 38, 15: 41,
- 16: 43, 17: 45, 18: 47, 19: 49, 20: 56,
-};
-
-/* =========================================================
- * Component
- * =======================================================*/
 function CharacterSheet({ level }) {
-  // 1) Stats : lues synchroniquement depuis LS au 1er render
-  const [stats, setStats] = useLocalStorage("character_stats", DEFAULT_STATS);
+  const hasLoaded = useRef(false);
 
-  // 1.b) Normaliser une seule fois les types (si l'import a mis des strings)
-  useEffect(() => {
-    const n = normalizeStats(stats);
-    // comparer rapidement
-    if (JSON.stringify(n) !== JSON.stringify(stats)) {
-      setStats(n); // écrit dans LS (après le premier skip) avec types corrigés
+
+  const [stats, setStats] = useState(() => {
+  try {
+    const raw = localStorage.getItem("character_stats");
+    let s = raw ? JSON.parse(raw) : {};
+    // migrate legacy ATT → FOR
+    if (s && s.FOR == null && s.ATT != null) {
+      s.FOR = s.ATT;
+      delete s.ATT;
+      localStorage.setItem("character_stats", JSON.stringify(s));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // une seule fois
+    const num = (v) => (Number.isFinite(+v) ? +v : 0);
+    return {
+      FOR: num(s?.FOR), DEX: num(s?.DEX), CON: num(s?.CON),
+      INT: num(s?.INT), SAG: num(s?.SAG), CHA: num(s?.CHA),
+    };
+  } catch {
+    return { FOR:0, DEX:0, CON:0, INT:0, SAG:0, CHA:0 };
+  }
+});
 
-  // 2) Déductions
-  const maxPv = useMemo(() => (Number(stats.CON) || 0) * 10, [stats.CON]);
-  const maxPe = useMemo(() => (Number(stats.SAG) || 0) * 10, [stats.SAG]);
+const [pv, setPv] = useState(() => {
+  const raw = localStorage.getItem("character_pv");
+  return raw != null ? (+raw || 0) : 0;
+});
 
-  // 3) PV/PE : initialisés depuis LS au tout premier render.
-  //    Si aucune valeur stockée, on prend par défaut le max calculé depuis les stats déjà hydratées.
-  const [pv, setPv] = useLocalStorage("character_pv", maxPv);
-  const [pe, setPe] = useLocalStorage("character_pe", maxPe);
+const [pe, setPe] = useState(() => {
+  const raw = localStorage.getItem("character_pe");
+  return raw != null ? (+raw || 0) : 0;
+});
 
-  // 4) Clamps vers le bas seulement lorsque max change (évite le drop à 0 avant hydratation)
+  // ---------- Indice de recherche ----------
+  const WANTED_LEVELS = [
+    null,
+    'petit vol',
+    'violence aggravée',
+    'meurtre',
+    'Multiples meurtres',
+    'Attentat',
+    'Génocide',
+    'Destruction planétaire',
+  ];
+  const [wantedIndex, setWantedIndex] = useState(() => {
+    try {
+      const raw = localStorage.getItem('character_wanted_index');
+      if (raw != null) {
+        const n = Number(JSON.parse(raw));
+        if (Number.isFinite(n) && n >= 1 && n <= 7) return n;
+      }
+    } catch {}
+    return 1;
+  });
   useEffect(() => {
-    setPv((prev) => {
-      const cur = Number(prev) || 0;
-      return cur > maxPv ? maxPv : cur;
-    });
-  }, [maxPv, setPv]);
+    try { localStorage.setItem('character_wanted_index', JSON.stringify(wantedIndex)); } catch {}
+  }, [wantedIndex]);
+  const wantedStars = (n) => '⭐'.repeat(Math.max(0, Math.min(7, n || 0)));
+  const wantedLabel = (n) => {
+    const name = WANTED_LEVELS[n] || '';
+    return name ? `${name} (${wantedStars(n)})` : '';
+  };
+
+  // ---------- Helpers ----------
+  const parseNum = (v) => {
+    if (v === null || v === undefined) return 0;
+    const n = parseFloat(String(v).trim().replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const formatWeight = (n) => {
+    const r = Math.round(n * 100) / 100;
+    return Number.isInteger(r) ? String(r) : r.toFixed(2);
+  };
+
+  const maxPv = stats.CON * 10;
+  const maxPe = stats.SAG * 10;
 
   useEffect(() => {
-    setPe((prev) => {
-      const cur = Number(prev) || 0;
-      return cur > maxPe ? maxPe : cur;
-    });
-  }, [maxPe, setPe]);
+  try { localStorage.setItem("character_stats", JSON.stringify(stats)); } catch {}
+  }, [stats]);
 
-  // 5) Limites de caractéristiques par niveau
+  useEffect(() => {
+    try { localStorage.setItem("character_pv", String(pv)); } catch {}
+  }, [pv]);
+
+  useEffect(() => {
+    try { localStorage.setItem("character_pe", String(pe)); } catch {}
+  }, [pe]);
+
+  // Persist level (export fallback)
+  useEffect(() => {
+    try { localStorage.setItem("character_level", JSON.stringify(level)); } catch {}
+  }, [level]);
+
+  // Load PV/PE/Stats from LS + MIGRATE ATT → FOR once
+  useEffect(() => {
+    try {
+      const rawStats = localStorage.getItem("character_stats");
+      const storedPv = localStorage.getItem("character_pv");
+      const storedPe = localStorage.getItem("character_pe");
+
+      let parsed = {
+        FOR: 0, DEX: 0, CON: 0, INT: 0, SAG: 0, CHA: 0,
+      };
+      if (rawStats) {
+        const s = JSON.parse(rawStats) || {};
+        // MIGRATION: if legacy ATT exists and FOR is missing, move ATT → FOR
+        let migrated = false;
+        if (s.FOR == null && s.ATT != null) {
+          s.FOR = s.ATT;
+          delete s.ATT;
+          migrated = true;
+        }
+        parsed = {
+          FOR: parseNum(s.FOR),
+          DEX: parseNum(s.DEX),
+          CON: parseNum(s.CON),
+          INT: parseNum(s.INT),
+          SAG: parseNum(s.SAG),
+          CHA: parseNum(s.CHA),
+        };
+        if (migrated) {
+          try { localStorage.setItem("character_stats", JSON.stringify(parsed)); } catch {}
+        }
+      }
+      setStats(parsed);
+
+      if (storedPv) setPv(Number(storedPv));
+      if (storedPe) setPe(Number(storedPe));
+    } catch (e) {
+      console.error("Erreur chargement PV/PE/stats:", e);
+    } finally {
+      hasLoaded.current = true;
+    }
+  }, []);
+
+  // Auto-save stats/PV/PE
+  useEffect(() => {
+    if (!hasLoaded.current) return;
+    try { localStorage.setItem("character_stats", JSON.stringify(stats)); } catch {}
+  }, [stats]);
+  useEffect(() => {
+    if (!hasLoaded.current) return;
+    try { localStorage.setItem("character_pv", String(pv)); } catch {}
+  }, [pv]);
+  useEffect(() => {
+    if (!hasLoaded.current) return;
+    try { localStorage.setItem("character_pe", String(pe)); } catch {}
+  }, [pe]);
+
+  // Clamp PV/PE when max changes
+  useEffect(() => { setPv((prev) => Math.min(prev, maxPv)); }, [maxPv]);
+  useEffect(() => { setPe((prev) => Math.min(prev, maxPe)); }, [maxPe]);
+
+  const levelCap = {
+    1: 12, 2: 14, 3: 15, 4: 17, 5: 20,
+    6: 22, 7: 23, 8: 25, 9: 27, 10: 31,
+    11: 33, 12: 35, 13: 36, 14: 38, 15: 41,
+    16: 43, 17: 45, 18: 47, 19: 49, 20: 56,
+  };
+
   const maxCaracteristiques = levelCap[level] || 0;
+  const totalCaracteristiques = Object.values(stats).reduce((a, b) => a + b, 0);
 
-  const totalCaracteristiques = useMemo(
-    () =>
-      Object.values(stats).reduce((sum, v) => sum + (Number(v) || 0), 0),
-    [stats]
-  );
-
-  // 6) MàJ d'une carac : recalcul basé sur l'état courant (évite les erreurs de fermeture)
   const updateStat = (key, change) => {
     setStats((prev) => {
-      const curVal = Number(prev[key]) || 0;
-      const nextVal = curVal + change;
-      if (nextVal < 0) return prev;
-
-      const curTotal = Object.values(prev).reduce(
-        (sum, v) => sum + (Number(v) || 0),
-        0
-      );
-      const nextTotal = curTotal + change;
-      if (nextTotal > maxCaracteristiques) return prev;
-
-      return { ...prev, [key]: nextVal };
+      const newValue = (prev[key] ?? 0) + change;
+      const newTotal = totalCaracteristiques + change;
+      if (newValue < 0 || newTotal > maxCaracteristiques) return prev;
+      return { ...prev, [key]: newValue };
     });
   };
 
-  // 7) Lecture des skills/objects pour ActionButton (memo + robustesse)
-  const skills = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("character_skills")) || [];
-    } catch {
-      return [];
-    }
-  }, []);
-
-  const objects = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("character_objects")) || [];
-    } catch {
-      return [];
-    }
-  }, []);
-
-  // 8) UI
   const StatBlock = ({ label, value, onIncrement, onDecrement }) => {
     const isDisabled = totalCaracteristiques >= maxCaracteristiques;
     return (
       <div
         style={{
-          width: "100px",
-          height: "90px",
-          backgroundColor: "black",
-          color: "white",
-          borderRadius: "10px",
-          textAlign: "center",
-          margin: "5px",
-          fontFamily: "sans-serif",
+          width: '100px',
+          height: '90px',
+          backgroundColor: 'black',
+          color: 'white',
+          borderRadius: '10px',
+          textAlign: 'center',
+          margin: '5px',
+          fontFamily: 'sans-serif',
         }}
       >
-        <div style={{ padding: "5px 0", fontWeight: "bold" }}>{label}</div>
-        <div style={{ display: "flex", borderTop: "1px solid white" }}>
+        <div style={{ padding: '5px 0', fontWeight: 'bold' }}>{label}</div>
+        <div style={{ display: 'flex', borderTop: '1px solid white' }}>
           <button
             onClick={onDecrement}
             style={{
-              flex: 1,
-              background: "none",
-              color: "white",
-              border: "none",
-              fontSize: "16px",
-              padding: "6px 0",
-              cursor: "pointer",
+              flex: 1, background: 'none', color: 'white', border: 'none',
+              fontSize: '16px', padding: '6px 0', cursor: 'pointer',
             }}
-            aria-label={`Diminuer ${label}`}
           >
             –
           </button>
           <div
             style={{
               flex: 1,
-              borderLeft: "1px solid white",
-              borderRight: "1px solid white",
-              padding: "6px 0",
-              fontWeight: "bold",
+              borderLeft: '1px solid white',
+              borderRight: '1px solid white',
+              padding: '6px 0',
+              fontWeight: 'bold',
             }}
-            aria-live="polite"
           >
             {value}
           </div>
@@ -212,14 +217,13 @@ function CharacterSheet({ level }) {
             disabled={isDisabled}
             style={{
               flex: 1,
-              background: "none",
-              color: isDisabled ? "gray" : "white",
-              border: "none",
-              fontSize: "16px",
-              padding: "6px 0",
-              cursor: isDisabled ? "not-allowed" : "pointer",
+              background: 'none',
+              color: isDisabled ? 'gray' : 'white',
+              border: 'none',
+              fontSize: '16px',
+              padding: '6px 0',
+              cursor: isDisabled ? 'not-allowed' : 'pointer',
             }}
-            aria-label={`Augmenter ${label}`}
           >
             +
           </button>
@@ -228,109 +232,143 @@ function CharacterSheet({ level }) {
     );
   };
 
+  // ----- INVENTORY WEIGHT (live) -----
+  const [objectsVersion, setObjectsVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setObjectsVersion((v) => v + 1);
+    const onStorage = (e) => { if (e.key === 'character_objects') bump(); };
+    window.addEventListener('character_objects_updated', bump);
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('visibilitychange', bump);
+    window.addEventListener('focus', bump);
+    return () => {
+      window.removeEventListener('character_objects_updated', bump);
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('visibilitychange', bump);
+      window.removeEventListener('focus', bump);
+    };
+  }, []);
+  const objects = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem("character_objects")) || []; }
+    catch { return []; }
+  }, [objectsVersion]);
+  const totalWeight = useMemo(
+    () => (objects || []).reduce((sum, o) => sum + parseNum(o?.poids), 0),
+    [objects]
+  );
+
+  // Carry capacity: (FOR + CON) * 10
+  const maxCarry = (parseNum(stats.FOR) + parseNum(stats.CON)) * 10;
+
+  // Snapshot for ActionButton
+  const skills = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem("character_skills")) || []; }
+    catch { return []; }
+  }, [objectsVersion]);
+
+  // For nicer order when rendering stats blocks
+  const statOrder = ["FOR", "DEX", "CON", "INT", "SAG", "CHA"];
+
   return (
     <>
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gridTemplateRows: "1fr 1fr",
-          border: "1px solid #000",
-          width: "500px",
-          height: "auto",
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gridTemplateRows: '1fr 1fr',
+          border: '1px solid #000',
+          width: '500px',
+          height: 'auto',
         }}
       >
+        {/* Top-left: Indice de recherche */}
         <div
           style={{
-            borderRight: "1px solid #000",
-            borderBottom: "1px solid #000",
-            padding: "10px",
+            borderRight: '1px solid #000',
+            borderBottom: '1px solid #000',
+            padding: '10px',
+          }}
+        >
+          <p style={{ marginBottom: 8 }}>
+            <strong>Indice de recherche :</strong>
+          </p>
+          <div>
+            <select
+              value={wantedIndex}
+              onChange={(e) => setWantedIndex(Number(e.target.value))}
+              style={{
+                padding: '6px 8px',
+                borderRadius: 6,
+                border: '1px solid #ccc',
+                width: '100%',
+              }}
+              aria-label="Indice de recherche"
+            >
+              {[1,2,3,4,5,6,7].map((n) => (
+                <option key={n} value={n}>
+                  {wantedLabel(n)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Top-right: Poids porté */}
+        <div
+          style={{
+            borderBottom: '1px solid #000',
+            padding: '10px',
           }}
         >
           <p>
-            <strong>Indice de recherche :</strong> criminel
+            <strong>Poids porté :</strong> {formatWeight(totalWeight)} / {formatWeight(maxCarry)}
           </p>
         </div>
 
+        {/* Bottom-left: Stats */}
         <div
           style={{
-            borderBottom: "1px solid #000",
-            padding: "10px",
-          }}
-        >
-          <p>
-            <strong>Poids porté :</strong> 70/80
-          </p>
-        </div>
-
-        <div
-          style={{
-            borderRight: "1px solid #000",
-            padding: "10px",
-            display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "center",
+            borderRight: '1px solid #000',
+            padding: '10px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
           }}
         >
           <h2>Vous êtes niveau : {level}</h2>
-          <p>
-            Total caractéristiques : {totalCaracteristiques} /{" "}
-            {maxCaracteristiques}
-          </p>
-          {Object.entries(stats).map(([label, value]) => (
+          <p>Total caractéristiques : {totalCaracteristiques} / {maxCaracteristiques}</p>
+
+          {statOrder.map((label) => (
             <StatBlock
               key={label}
               label={label}
-              value={value}
+              value={stats[label] ?? 0}
               onIncrement={() => updateStat(label, 1)}
               onDecrement={() => updateStat(label, -1)}
             />
           ))}
         </div>
 
-        <div style={{ padding: "10px" }}>
-          <div style={{ marginBottom: "10px" }}>
-            <p>
-              PV : {pv}/{maxPv}
-            </p>
-            <button onClick={() => setPv((prev) => Math.max((Number(prev) || 0) - 1, 0))}>
-              - PV
-            </button>
-            <button
-              onClick={() =>
-                setPv((prev) =>
-                  Math.min((Number(prev) || 0) + 1, maxPv)
-                )
-              }
-            >
-              + PV
-            </button>
+        {/* Bottom-right: PV/PE */}
+        <div style={{ padding: '10px' }}>
+          <div style={{ marginBottom: '10px' }}>
+            <p>PV : {pv}/{maxPv}</p>
+            <button onClick={() => setPv((prev) => Math.max(prev - 1, 0))}>- PV</button>
+            <button onClick={() => setPv((prev) => Math.min(prev + 1, maxPv))}>+ PV</button>
           </div>
 
           <div>
-            <p>
-              PE : {pe}/{maxPe}
-            </p>
-            <button onClick={() => setPe((prev) => Math.max((Number(prev) || 0) - 1, 0))}>
-              - PE
-            </button>
-            <button
-              onClick={() =>
-                setPe((prev) =>
-                  Math.min((Number(prev) || 0) + 1, maxPe)
-                )
-              }
-            >
-              + PE
-            </button>
+            <p>PE : {pe}/{maxPe}</p>
+            <button onClick={() => setPe((prev) => Math.max(prev - 1, 0))}>- PE</button>
+            <button onClick={() => setPe((prev) => Math.min(prev + 1, maxPe))}>+ PE</button>
           </div>
         </div>
       </div>
 
-      <div style={{ marginTop: "20px" }}>
+      <div style={{ marginTop: '20px' }}>
         <ActionButton
           characteristics={{
-            attaque: stats.ATT,
+            attaque: stats.FOR,  // <— now uses FOR
             defense: stats.CON,
             volonte: stats.SAG,
           }}

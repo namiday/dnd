@@ -1,9 +1,5 @@
-import {
-  Tab,
-  Tabs,
-  TabList,
-  TabPanel
-} from "react-tabs";
+import React, { useState } from "react";
+import { Tab, Tabs, TabList, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
 
 import GeneralInfoTab from "./GeneralInfoTab";
@@ -14,41 +10,53 @@ import ContactsTab from "./Contacts/ContactsTab";
 import ExportButton from "../ExportButton";
 import ImportButton from "../ImportButton";
 
+function CharacterTabs({ level }) {
+  const [generalInfo, setGeneralInfo] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("character_generalInfo")) || {};
+    } catch {
+      return {};
+    }
+  });
 
-export default function CharacterTabs() {
   return (
-    <div className="w-full max-w-4xl mx-auto p-4">
+    <div className="p-4">
       <Tabs>
         <TabList>
-          <Tab>Info. Générales</Tab>
+          <Tab>Informations Générales</Tab>
           <Tab>Compétences</Tab>
           <Tab>Objets</Tab>
-          <Tab>Familiers</Tab>
+          <Tab>PNJ / Familiers</Tab>
           <Tab>Contacts</Tab>
         </TabList>
 
         <TabPanel forceRender>
-          <GeneralInfoTab />
+          <GeneralInfoTab onInfoChange={setGeneralInfo} />
         </TabPanel>
+
         <TabPanel forceRender>
           <SkillsTab />
         </TabPanel>
+
         <TabPanel forceRender>
           <ObjectsTab />
         </TabPanel>
+
         <TabPanel forceRender>
           <PnjsTab />
         </TabPanel>
+
         <TabPanel forceRender>
           <ContactsTab />
         </TabPanel>
       </Tabs>
 
-      {/* Export CSV en bas de page */}
-      <div className="flex justify-end mt-6">
-        <ExportButton />
+      <div className="flex justify-end gap-2 mt-6">
+        <ExportButton level={level} generalInfo={generalInfo} />
         <ImportButton />
       </div>
     </div>
   );
 }
+
+export default CharacterTabs;

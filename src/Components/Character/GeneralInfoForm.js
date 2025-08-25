@@ -1,19 +1,118 @@
 // Components/Character/GeneralInfoForm.js
 
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
+
+const LS_INFO = "character_generalInfo";
+const LS_XP = "character_xp";
+
+const parseNum = (v) => {
+  if (v === null || v === undefined) return 0;
+  const n = Number(String(v).trim().replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+};
+
+const readInfo = () => {
+  try {
+    return JSON.parse(localStorage.getItem(LS_INFO)) || {};
+  } catch {
+    return {};
+  }
+};
+
+const readXP = () => {
+  // canonical key first
+  try {
+    const raw = localStorage.getItem(LS_XP);
+    if (raw != null) {
+      try {
+        const n = Number(JSON.parse(raw));
+        if (Number.isFinite(n)) return n;
+      } catch {
+        const n = Number(raw);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+  } catch {}
+  // fallback: maybe stored in general info
+  const gi = readInfo();
+  const cand = parseNum(gi?.XP ?? gi?.xp ?? gi?.experience ?? gi?.exp);
+  return cand || 0;
+};
+
+const writeAll = (infoObj, xpNumber) => {
+  try {
+    localStorage.setItem(LS_XP, JSON.stringify(xpNumber));
+  } catch {}
+  try {
+    const merged = { ...(infoObj || {}), XP: xpNumber };
+    localStorage.setItem(LS_INFO, JSON.stringify(merged));
+  } catch {}
+};
 
 const GeneralInfoForm = ({ onChange }) => {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
-    watch,
-  } = useForm();
+  } = useForm({
+    defaultValues: {
+      nom: "",
+      prenom: "",
+      pseudo: "",
+      ordre: "",
+      religion: "",
+      metier: "",
+      description: "",
+      liquidite: "",
+      compte_courant: "",
+      frais_fixes: "",
+      livret_a: "",
+      livret_b: "",
+      dette_bancaire: "",
+      dette_perso: "",
+      preteur: "",
+      pel: "",
+      crypto: "",
+      revenu: "",
+      XP: 0,
+    },
+  });
+
+  // Load from LS at mount (and after reloads)
+  useEffect(() => {
+    const gi = readInfo();
+    const xp = readXP();
+    reset({
+      nom: gi.nom || "",
+      prenom: gi.prenom || "",
+      pseudo: gi.pseudo || "",
+      ordre: gi.ordre || "",
+      religion: gi.religion || "",
+      metier: gi.metier || "",
+      description: gi.description || "",
+      liquidite: gi.liquidite || "",
+      compte_courant: gi.compte_courant || "",
+      frais_fixes: gi.frais_fixes || "",
+      livret_a: gi.livret_a || "",
+      livret_b: gi.livret_b || "",
+      dette_bancaire: gi.dette_bancaire || "",
+      dette_perso: gi.dette_perso || "",
+      preteur: gi.preteur || "",
+      pel: gi.pel || "",
+      crypto: gi.crypto || "",
+      revenu: gi.revenu || "",
+      XP: xp, // prefill
+    });
+  }, [reset]);
 
   const onSubmit = (data) => {
-    console.log("Informations générales:", data);
-    if (onChange) onChange(data);
+    const xpNumber = parseNum(data?.XP);
+    const toSave = { ...data, XP: xpNumber };
+    writeAll(toSave, xpNumber);
+    if (onChange) onChange(toSave);
+    console.log("✅ Informations générales sauvegardées:", toSave);
   };
 
   return (
@@ -34,6 +133,22 @@ const GeneralInfoForm = ({ onChange }) => {
         placeholder="Description"
         className="border p-2 rounded w-full h-24"
       />
+
+      {/* XP */}
+      <div>
+        <h3 className="font-semibold mt-4 mb-2">Progression</h3>
+        <div className="grid grid-cols-2 gap-4 items-center">
+          <label className="text-sm text-gray-700">XP (expérience actuelle)</label>
+          <input
+            type="number"
+            step="1"
+            min="0"
+            {...register("XP")}
+            placeholder="0"
+            className="border p-2 rounded"
+          />
+        </div>
+      </div>
 
       {/* Finance */}
       <h3 className="font-semibold mt-4">Finances</h3>

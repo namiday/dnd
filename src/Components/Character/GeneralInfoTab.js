@@ -1,43 +1,35 @@
-// Components/Character/GeneralInfo/GeneralInfoTab.js
-
-import React, { useState, useEffect, useRef } from "react";
+// Components/Character/GeneralInfoTab.js
+import React, { useEffect, useRef, useState } from "react";
 import GeneralInfoForm from "./GeneralInfoForm";
 
-const LOCAL_STORAGE_KEY = "character_generalInfo";
+const LS_KEY = "character_generalInfo";
 
-const GeneralInfoTab = () => {
-  const [info, setInfo] = useState({});
-  const hasLoaded = useRef(false);
+const GeneralInfoTab = ({ onInfoChange }) => {
+  const [initialInfo, setInitialInfo] = useState(null);
+  const mounted = useRef(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (mounted.current) return;
+    mounted.current = true;
+
+    let parsed = {};
     try {
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        console.log("📥 Chargement info générales:", parsed);
-        setInfo(parsed);
-      }
-    } catch (e) {
-      console.error("Erreur de parsing info générales:", e);
-    } finally {
-      hasLoaded.current = true;
-    }
+      const raw = localStorage.getItem(LS_KEY);
+      parsed = raw ? JSON.parse(raw) : {};
+    } catch {}
+    setInitialInfo(parsed);
+    onInfoChange?.(parsed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!hasLoaded.current) return;
-    console.log("💾 Sauvegarde info générales:", info);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(info));
-  }, [info]);
-
-  const handleChange = (updatedInfo) => {
-    setInfo(updatedInfo);
+  const handleChange = (updated) => {
+    onInfoChange?.(updated || {});
   };
 
   return (
     <div className="p-4">
       <h2 className="text-xl font-bold mb-4">Informations Générales</h2>
-      <GeneralInfoForm data={info} onChange={handleChange} />
+      <GeneralInfoForm onChange={handleChange} />
     </div>
   );
 };

@@ -1,20 +1,128 @@
 import React from "react";
 
-const ExportButton = ({ level }) => {
+const ExportButton = ({ level, generalInfo }) => {
   const sanitize = (v) => {
     if (v === null || v === undefined) return "";
-    // Éviter de casser le CSV basé sur ';' et les retours ligne
     return String(v).replace(/;/g, ",").replace(/\r?\n|\r/g, " ");
   };
+
+  // --- Wanted label helpers ---
+  const WANTED_LEVELS = [
+    null,
+    "petit vol",
+    "violence aggravée",
+    "meurtre",
+    "Multiples meurtres",
+    "Attentat",
+    "Génocide",
+    "Destruction planétaire",
+  ];
+  const clampWanted = (n) =>
+    Number.isFinite(n) ? Math.min(7, Math.max(1, n)) : 1;
+
+  const getWantedIndexFromLS = () => {
+    try {
+      const raw = localStorage.getItem("character_wanted_index");
+      if (raw != null) {
+        try {
+          return clampWanted(Number(JSON.parse(raw)));
+        } catch {
+          return clampWanted(Number(raw));
+        }
+      }
+    } catch {}
+    return 1;
+  };
+
+  const zero = (n) => (n < 10 ? `0${n}` : String(n));
+  const toSlug = (s) =>
+    String(s || "fiche")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // strip accents
+      .replace(/[^a-zA-Z0-9-_]+/g, "-") // safe chars
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
 
   const handleExport = () => {
     let csvContent = "FICHE DE PERSONNAGE\n";
 
-    // --- Récupération des infos générales ---
-    const info = JSON.parse(localStorage.getItem("character_generalInfo")) || {};
+    // Merge props + LS for general info
+    const lsInfo = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("character_generalInfo")) || {};
+      } catch {
+        return {};
+      }
+    })();
+    const info = { ...lsInfo, ...(generalInfo || {}) };
 
-    // Noms de clés attendus par GeneralInfoForm
-    const identityKeys = ["nom", "prenom", "pseudo", "ordre", "religion", "metier"];
+    // Resolve level
+    const resolveLevel = () => {
+      if (Number.isFinite(level)) return Number(level);
+      try {
+        const raw = localStorage.getItem("character_level");
+        if (raw !== null) {
+          try {
+            const n = Number(JSON.parse(raw));
+            if (Number.isFinite(n)) return n;
+          } catch {
+            const n = Number(raw);
+            if (Number.isFinite(n)) return n;
+          }
+        }
+      } catch {}
+      const cands = ["niveau", "Niveau", "level", "Level"];
+      for (const k of cands) {
+        const n = Number(info?.[k]);
+        if (Number.isFinite(n)) return n;
+      }
+      return 0;
+    };
+    const charLevel = resolveLevel();
+
+    // Resolve wanted → label
+    const wantedIndex = getWantedIndexFromLS();
+    const wantedLabel = `${WANTED_LEVELS[wantedIndex]} (${Array(wantedIndex)
+      .fill("⭐")
+      .join("")})`;
+
+    // Resolve XP (LS first, then generalInfo fallbacks)
+    const resolveXP = () => {
+      try {
+        const raw = localStorage.getItem("character_xp");
+        if (raw != null) {
+          try {
+            const n = Number(JSON.parse(raw));
+            if (Number.isFinite(n)) return n;
+          } catch {
+            const n = Number(raw);
+            if (Number.isFinite(n)) return n;
+          }
+        }
+      } catch {}
+      const keys = ["XP", "xp", "experience", "exp"];
+      for (const k of keys) {
+        const n = Number(info?.[k]);
+        if (Number.isFinite(n)) return n;
+      }
+      return 0;
+    };
+    const xp = resolveXP();
+
+    // --- Informations Générales ---
+    csvContent += "\n[Informations Générales]\n";
+    csvContent += `Niveau;${charLevel}\n`;
+    csvContent += `Indice de recherche;${sanitize(wantedLabel)}\n`;
+    csvContent += `XP;${xp}\n`;
+
+    const identityKeys = [
+      "nom",
+      "prenom",
+      "pseudo",
+      "ordre",
+      "religion",
+      "metier",
+    ];
     const descriptionKey = "description";
     const financeKeys = [
       "liquidite",
@@ -30,56 +138,24 @@ const ExportButton = ({ level }) => {
       "revenu",
     ];
 
-    // Résolution robuste du niveau (prop > LS > info.*)
-    const resolveLevel = () => {
-      if (Number.isFinite(level)) return Number(level);
-
-      // character_level dans LS (JSON ou brut)
-      try {
-        const raw = localStorage.getItem("character_level");
-        if (raw !== null) {
-          try {
-            const parsed = JSON.parse(raw);
-            const n = Number(parsed);
-            if (Number.isFinite(n)) return n;
-          } catch {
-            const n = Number(raw);
-            if (Number.isFinite(n)) return n;
-          }
-        }
-      } catch {/* ignore */}
-
-      // chercher dans info: niveau / Niveau / level / Level
-      const cands = ["niveau", "Niveau", "level", "Level"];
-      for (const k of cands) {
-        const n = Number(info?.[k]);
-        if (Number.isFinite(n)) return n;
-      }
-      return 0;
-    };
-    const charLevel = resolveLevel();
-
-    // Écrire [Informations Générales] avec ordre stable
-    csvContent += "\n[Informations Générales]\n";
-    // Niveau en premier
-    csvContent += `Niveau;${charLevel}\n`;
-
-    // Identité
     identityKeys.forEach((k) => {
       csvContent += `${k};${sanitize(info[k])}\n`;
     });
-
-    // Description
     csvContent += `${descriptionKey};${sanitize(info[descriptionKey])}\n`;
-
-    // Finances
     financeKeys.forEach((k) => {
       csvContent += `${k};${sanitize(info[k])}\n`;
     });
 
-    // Clés additionnelles non listées (extensibilité)
     const alreadyWritten = new Set([
-      "niveau", "Niveau", "level", "Level",
+      "niveau",
+      "Niveau",
+      "level",
+      "Level",
+      "Indice de recherche",
+      "IndiceDeRecherche",
+      "WantedIndex",
+      "XP",
+      "xp",
       ...identityKeys,
       descriptionKey,
       ...financeKeys,
@@ -90,58 +166,178 @@ const ExportButton = ({ level }) => {
       }
     });
 
-    // --- Caractéristiques ---
-    const stats = JSON.parse(localStorage.getItem("character_stats")) || {};
-    csvContent += "\n[Caractéristiques]\n";
-    for (const [key, value] of Object.entries(stats)) {
-      csvContent += `${key};${sanitize(value)}\n`;
-    }
+    // --- Caractéristiques (FOR + legacy ATT mapping) ---
+    const rawStats = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("character_stats")) || {};
+      } catch {
+        return {};
+      }
+    })();
+    const stats = {
+      FOR: rawStats.FOR ?? rawStats.ATT ?? 0,
+      DEX: rawStats.DEX ?? 0,
+      CON: rawStats.CON ?? 0,
+      INT: rawStats.INT ?? 0,
+      SAG: rawStats.SAG ?? 0,
+      CHA: rawStats.CHA ?? 0,
+    };
 
-    // --- PV / PE ---
+    csvContent += "\n[Caractéristiques]\n";
+    ["FOR", "DEX", "CON", "INT", "SAG", "CHA"].forEach((k) => {
+      csvContent += `${k};${stats[k]}\n`;
+    });
     const pv = localStorage.getItem("character_pv") || "0";
     const pe = localStorage.getItem("character_pe") || "0";
-    csvContent += `PV;${sanitize(pv)}\nPE;${sanitize(pe)}\n`;
+    csvContent += `PV;${pv}\nPE;${pe}\n`;
 
     // --- Compétences ---
-    const skills = JSON.parse(localStorage.getItem("character_skills")) || [];
+    const skills = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("character_skills")) || [];
+      } catch {
+        return [];
+      }
+    })();
     csvContent += "\n[Compétences]\n";
-    csvContent += "Nom;Info;Carac1;Carac2;Part1;Uses1;Bonus1;Part2;Uses2;Bonus2\n";
+    csvContent +=
+      "Nom;Info;Carac1;Carac2;Part1;Uses1;Bonus1;Part2;Uses2;Bonus2\n";
     for (const s of skills) {
-      csvContent += `${sanitize(s.nom)};${sanitize(s.info)};${sanitize(s.carac1)};${sanitize(s.carac2)};${sanitize(s.part1)};${sanitize(s.part1_uses)};${sanitize(s.part1_bonus)};${sanitize(s.part2)};${sanitize(s.part2_uses)};${sanitize(s.part2_bonus)}\n`;
+      csvContent += [
+        s.nom ?? "",
+        s.info ?? "",
+        s.carac1 ?? "",
+        s.carac2 ?? "",
+        s.part1 ?? "",
+        s.part1_uses ?? "",
+        s.part1_bonus ?? "",
+        s.part2 ?? "",
+        s.part2_uses ?? "",
+        s.part2_bonus ?? "",
+      ]
+        .map(sanitize)
+        .join(";") + "\n";
     }
 
     // --- Objets ---
-    const objects = JSON.parse(localStorage.getItem("character_objects")) || [];
+    const objects = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("character_objects")) || [];
+      } catch {
+        return [];
+      }
+    })();
     csvContent += "\n[Objets]\n";
-    csvContent += "Nom;PR;DGT;PDE;Réservoir;Plein;Km;Qualité;Prix;Poids;Type;Minerai;QtéMinerai;Bonus;Malus;Catégorie\n";
+    csvContent +=
+      "Nom;PR;DGT;PDE;Réservoir;Plein;Km;Qualité;Prix;Poids;Type;Minerai;QtéMinerai;Bonus;Malus;Catégorie\n";
     for (const o of objects) {
-      csvContent += `${sanitize(o.nom)};${sanitize(o.PR)};${sanitize(o.DGT)};${sanitize(o.PDE)};${sanitize(o.reservoir)};${sanitize(o.prix_plein)};${sanitize(o.nb_km)};${sanitize(o.qualite)};${sanitize(o.prix)};${sanitize(o.poids)};${sanitize(o.type_objet)};${sanitize(o.type_minerai)};${sanitize(o.qte_minerai)};${sanitize(o.bonus)};${sanitize(o.malus)};${sanitize(o.categorie)}\n`;
+      csvContent += [
+        o.nom,
+        o.PR,
+        o.DGT,
+        o.PDE,
+        o.reservoir,
+        o.prix_plein,
+        o.nb_km,
+        o.qualite,
+        o.prix,
+        o.poids,
+        o.type_objet,
+        o.type_minerai,
+        o.qte_minerai,
+        o.bonus,
+        o.malus,
+        o.categorie,
+      ]
+        .map(sanitize)
+        .join(";") + "\n";
     }
 
     // --- PNJ / Familiers ---
-    const familiers = JSON.parse(localStorage.getItem("character_familiers")) || [];
+    const familiers = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("character_familiers")) || [];
+      } catch {
+        return [];
+      }
+    })();
     csvContent += "\n[PNJ / Familiers]\n";
-    csvContent += "Nom;Niveau;PVmin;PVmax;PEmin;PEmax;Attaque;VAtt;Défense;VDéf;Volonté;VVol;Spécial;VSpécial;XPmin;XPmax;Description;Forces;Faiblesses;Objets(nom:PR:DGT:PDE:qualité)\n";
+    csvContent +=
+      "Nom;Niveau;PVmin;PVmax;PEmin;PEmax;Attaque;VAtt;Défense;VDéf;Volonté;VVol;Spécial;VSpécial;XPmin;XPmax;Description;Forces;Faiblesses;Objets(nom:PR:DGT:PDE:qualité)\n";
     for (const f of familiers) {
       const objets = (f.objets || [])
-        .map((o) => `${sanitize(o.nom)}:${sanitize(o.PR)}:${sanitize(o.DGT)}:${sanitize(o.PDE)}:${sanitize(o.qualite)}`)
+        .map(
+          (o) =>
+            `${(o.nom ?? "").replace(/;/g, ",")}:${(o.PR ?? "")
+              .toString()
+              .replace(/;/g, ",")}:${(o.DGT ?? "")
+              .toString()
+              .replace(/;/g, ",")}:${(o.PDE ?? "")
+              .toString()
+              .replace(/;/g, ",")}:${(o.qualite ?? "")
+              .toString()
+              .replace(/;/g, ",")}`
+        )
         .join("|");
-      csvContent += `${sanitize(f.nom)};${sanitize(f.niveau)};${sanitize(f.pvMin)};${sanitize(f.pvMax)};${sanitize(f.peMin)};${sanitize(f.peMax)};${sanitize(f.nomAttaque)};${sanitize(f.valAttaque)};${sanitize(f.nomDefense)};${sanitize(f.valDefense)};${sanitize(f.nomVolonte)};${sanitize(f.valVolonte)};${sanitize(f.nomSpecial)};${sanitize(f.valSpecial)};${sanitize(f.xpMin)};${sanitize(f.xpMax)};${sanitize(f.description)};${sanitize(f.forces)};${sanitize(f.faiblesses)};${objets}\n`;
+      csvContent += [
+        f.nom,
+        f.niveau,
+        f.pvMin,
+        f.pvMax,
+        f.peMin,
+        f.peMax,
+        f.nomAttaque,
+        f.valAttaque,
+        f.nomDefense,
+        f.valDefense,
+        f.nomVolonte,
+        f.valVolonte,
+        f.nomSpecial,
+        f.valSpecial,
+        f.xpMin,
+        f.xpMax,
+        f.description,
+        f.forces,
+        f.faiblesses,
+        objets,
+      ]
+        .map(sanitize)
+        .join(";") + "\n";
     }
 
     // --- Contacts ---
-    const contacts = JSON.parse(localStorage.getItem("character_contacts")) || [];
+    const contacts = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("character_contacts")) || [];
+      } catch {
+        return [];
+      }
+    })();
     csvContent += "\n[Contacts]\n";
     csvContent += "Nom;Fonction;Aptitudes;Conditions\n";
     for (const c of contacts) {
-      csvContent += `${sanitize(c.nom)};${sanitize(c.fonction)};${sanitize(c.aptitudes)};${sanitize(c.conditions)}\n`;
+      csvContent += [c.nom, c.fonction, c.aptitudes, c.conditions]
+        .map(sanitize)
+        .join(";") + "\n";
     }
 
-    // --- Télécharger ---
+    // ---------- Filename: <name>_<level>_<YYYY-MM-DD>_<HH-mm>.csv ----------
+    const baseName =
+      info.nom?.trim() || info.pseudo?.trim() || "fiche";
+    const slug = toSlug(baseName);
+    const now = new Date(); // local time
+    const yyyy = now.getFullYear();
+    const mm = zero(now.getMonth() + 1);
+    const dd = zero(now.getDate());
+    const HH = zero(now.getHours());
+    const MM = zero(now.getMinutes());
+    const filename = `${slug}_${charLevel}_${yyyy}-${mm}-${dd}_${HH}-${MM}.csv`;
+
+    // Download
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "fiche_personnage.csv";
+    link.download = filename;
     link.click();
   };
 

@@ -1,9 +1,9 @@
 // src/App.js
 import React, { useEffect, useState } from 'react';
 import './App.css';
-import XpProgressCircle from './Components/XpProgressCircle';
 import CharacterSheet from './Components/Character/CharacterSheet';
 import CharacterTabs from './Components/Character/CharacterTabs';
+import AppHeader from "./Components/Layout/AppHeader";
 
 function App() {
   // 1) Hydrate level from LocalStorage (so CSV import shows in the UI immediately)
@@ -35,12 +35,15 @@ function App() {
     <div className="App">
       <header className="App-header">
         {/* Xp UI controls the *same* level state */}
-        <XpProgressCircle level={level} setLevel={setLevel} />
+        <AppHeader />
+
+      </header>
+      <main className="pt-[100px]">
         {/* Character sheet uses level for caps and calculations */}
         <CharacterSheet level={level} />
-      </header>
-      {/* Tabs need level for export */}
-      <CharacterTabs level={level} />
+
+        <CharacterTabs level={level} />
+      </main>
     </div>
   );
 }
